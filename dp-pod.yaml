@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mypod
+spec:
+  containers:
+  - name: mypod
+    image: xilinxatg/fpga-verify:2018.10.29
+    resources:
+      limits:
+        xilinx.com/fpga-xilinx_vcu1525_dynamic_5_1-1521279439: 1
+    volumeMounts:
+      - name: hostopt
+        mountPath: /opt
+        readOnly: true
+    command: ["/bin/sh"]
+    args: ["-c", "while true; do echo hello; sleep 10;done"]	
+  volumes:
+    - name: hostopt
+      hostPath:
+        path: /opt
+

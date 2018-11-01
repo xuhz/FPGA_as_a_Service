@@ -316,20 +316,25 @@ func (m *FPGADevicePluginServer) Allocate(ctx context.Context, req *pluginapi.Al
 			// makes sure flashing DSA(shell) through mgmt pf in container is denied.
 			// This is not good. we will change that later, then only the user pf node is
 			// required to be assigned to container(device cgroup of the container)
-			cres.Devices = append(cres.Devices, &pluginapi.DeviceSpec{
-				HostPath:      dev.Nodes.Mgmt,
-				ContainerPath: dev.Nodes.Mgmt,
-				Permissions:   "rwm",
-			})
+			//
+			// When containers are on top of VM, it is possible only user PF is assigned
+			// to VM, so the Mgmt is empty. Don't add it to cgroup in that case
+			if dev.Nodes.Mgmt != "" {
+				cres.Devices = append(cres.Devices, &pluginapi.DeviceSpec{
+					HostPath:      dev.Nodes.Mgmt,
+					ContainerPath: dev.Nodes.Mgmt,
+					Permissions:   "rwm",
+				})
+				cres.Mounts = append(cres.Mounts, &pluginapi.Mount{
+					HostPath:      dev.Nodes.Mgmt,
+					ContainerPath: dev.Nodes.Mgmt,
+					ReadOnly:      false,
+				})
+			}
 			cres.Devices = append(cres.Devices, &pluginapi.DeviceSpec{
 				HostPath:      dev.Nodes.User,
 				ContainerPath: dev.Nodes.User,
 				Permissions:   "rwm",
-			})
-			cres.Mounts = append(cres.Mounts, &pluginapi.Mount{
-				HostPath:      dev.Nodes.Mgmt,
-				ContainerPath: dev.Nodes.Mgmt,
-				ReadOnly:      false,
 			})
 			cres.Mounts = append(cres.Mounts, &pluginapi.Mount{
 				HostPath:      dev.Nodes.User,

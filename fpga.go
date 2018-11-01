@@ -19,24 +19,25 @@ import (
 	"io/ioutil"
 	pluginapi "k8s.io/kubernetes/pkg/kubelet/apis/deviceplugin/v1beta1"
 	"path"
-	"regexp"
 	"strconv"
+	"strings"
 )
 
 const (
-	SysfsDevices    = "/sys/bus/pci/devices/0000:"
-	DevDir          = "/dev"
-	MgmtPrefix      = "/dev/"
-	UserPrefix      = "/dev/dri/"
-	UserPostfix     = "/drm"
-	DeviceIDPostfix = "/device"
-	DSAverPostfix   = "/VBNV"
-	DSAtsPostfix    = "/timestamp"
-	DSAPrefix       = "/rom.m."
-	MgmtFunc        = ".1"
-	UserFunc        = ".0"
-	MgmtRE          = `^xclmgmt[0-9]+$`
-	UserRE          = `^renderD[0-9]+$`
+	SysfsDevices   = "/sys/bus/pci/devices"
+	MgmtPrefix     = "/dev/xclmgmt"
+	UserPrefix     = "/dev/dri"
+	UserPFKeyword  = "drm"
+	DRMSTR         = "renderD"
+	DSAverFile     = "VBNV"
+	DSAtsFile      = "timestamp"
+	DSAinfoFile    = "rom.u."
+	InstanceFile   = "instance"
+	MgmtFunc       = ".1"
+	UserFunc       = ".0"
+	VendorFile     = "vendor"
+	DeviceFile     = "device"
+	XilinxVendorID = "0x10ee"
 )
 
 type Pairs struct {
@@ -48,31 +49,32 @@ type Device struct {
 	index     string
 	shellVer  string
 	timestamp string
-	BDF       string // this is for user pf
+	DBDF      string // this is for user pf
 	deviceID  string //devid of the user pf
 	Healthy   string
 	Nodes     Pairs
 }
 
-func GetBD(mgmtBDFdec string) (string, error) {
-	input, err := strconv.Atoi(mgmtBDFdec)
+func GetInstance(DBDF string) (string, error) {
+	strArray := strings.Split(DBDF, ":")
+	b, err := strconv.Atoi(strArray[1])
 	if err != nil {
-		fmt.Println("strconv failed\n")
-		return "", err
+		return "", fmt.Errorf("strconv failed: %s\n", strArray[1])
 	}
-	bus := input / 256
-	dev := (input - bus*256) / 8
-	fun := input - bus*256 - dev*8
-	if fun != 1 {
-		return "", fmt.Errorf("xilinx fpga mgmt func should be 1\n")
+	strArray = strings.Split(strArray[2], ".")
+	d, err := strconv.Atoi(strArray[0])
+	if err != nil {
+		return "", fmt.Errorf("strconv failed: %s\n", strArray[0])
 	}
-	userBD := fmt.Sprintf("%02x:%02x", bus, dev)
-	return userBD, nil
+	f, err := strconv.Atoi(strArray[1])
+	if err != nil {
+		return "", fmt.Errorf("strconv failed: %s\n", strArray[1])
+	}
+	ret := b*256 + d*8 + f
+	return strconv.Itoa(ret), nil
 }
 
-func GetUserPF(userBDF string) (string, error) {
-	userRE := regexp.MustCompile(UserRE)
-	dir := SysfsDevices + userBDF + UserPostfix
+func GetUserPF(dir string) (string, error) {
 	userFiles, err := ioutil.ReadDir(dir)
 	if err != nil {
 		return "", fmt.Errorf("Can't read folder %s \n", dir)
@@ -80,7 +82,7 @@ func GetUserPF(userBDF string) (string, error) {
 	for _, userFile := range userFiles {
 		fname := userFile.Name()
 
-		if !userRE.MatchString(fname) {
+		if !strings.HasPrefix(fname, DRMSTR) {
 			continue
 		}
 		return fname, nil
@@ -92,70 +94,97 @@ func GetFileContent(file string) (string, error) {
 	if buf, err := ioutil.ReadFile(file); err != nil {
 		return "", fmt.Errorf("Can't read file %s \n", file)
 	} else {
-		return string(buf), nil
+		ret := strings.Trim(string(buf), "\n")
+		return ret, nil
 	}
 }
 
 func GetDevices() ([]Device, error) {
-	mgmtRE := regexp.MustCompile(MgmtRE)
 	var devices []Device
-	mgmtFiles, err := ioutil.ReadDir(DevDir)
+	pciFiles, err := ioutil.ReadDir(SysfsDevices)
 	if err != nil {
-		return nil, fmt.Errorf("Can't read folder %s \n", DevDir)
+		return nil, fmt.Errorf("Can't read folder %s \n", SysfsDevices)
 	}
 
-	for _, mgmtFile := range mgmtFiles {
-		fname := mgmtFile.Name()
+	for _, pciFile := range pciFiles {
+		pciID := pciFile.Name()
 
-		if !mgmtRE.MatchString(fname) {
+		fname := path.Join(SysfsDevices, pciID, VendorFile)
+		vendorID, err := GetFileContent(fname)
+		if err != nil {
+			return nil, err
+		}
+		if strings.EqualFold(vendorID, XilinxVendorID) != true {
 			continue
 		}
 
-		re := regexp.MustCompile("[^0-9]")
-		mgmtBDFdec := re.ReplaceAllString(fname, "")
-		mgmt := path.Join(MgmtPrefix, fname)
+		// For containers deployed on top of baremetal machines, xilinx FPGA
+		// in sysfs will always appear as pair of mgmt PF and user PF
+		// For containers deployed on top of VM, there may be only user PF
+		// available(mgmt PF is not assigned to the VM)
+		// so mgmt in Pari may be empty
+		nodes := Pairs{Mgmt: "", User: ""}
+		var dsaVer, dsaTs, userDBDF, devid string
+		if strings.HasSuffix(pciID, UserFunc) { //user pf
+			userDBDF = pciID
+			instance, err := GetInstance(userDBDF)
+			if err != nil {
+				return nil, err
+			}
+			// get dsa version
+			fname = path.Join(SysfsDevices, pciID, DSAinfoFile+instance, DSAverFile)
+			content, err := GetFileContent(fname)
+			if err != nil {
+				return nil, err
+			}
+			dsaVer = content
+			// get dsa timestamp
+			fname = path.Join(SysfsDevices, pciID, DSAinfoFile+instance, DSAtsFile)
+			content, err = GetFileContent(fname)
+			if err != nil {
+				return nil, err
+			}
+			dsaTs = content
+			// get device id
+			fname = path.Join(SysfsDevices, pciID, DeviceFile)
+			content, err = GetFileContent(fname)
+			if err != nil {
+				return nil, err
+			}
+			devid = content
+			// get user PF node
+			userpf, err := GetUserPF(path.Join(SysfsDevices, pciID, UserPFKeyword))
+			if err != nil {
+				return nil, err
+			}
+			nodes.User = path.Join(UserPrefix, userpf)
 
-		BDstr, err := GetBD(mgmtBDFdec)
-		if err != nil {
-			return nil, err
+			//TODO: check temp, power, fan speed etc, to give a healthy level
+			//so far, return Healthy
+			healthy := pluginapi.Healthy
+			devices = append(devices, Device{
+				index:     strconv.Itoa(len(devices) + 1),
+				shellVer:  dsaVer,
+				timestamp: dsaTs,
+				DBDF:      userDBDF,
+				deviceID:  devid,
+				Healthy:   healthy,
+				Nodes:     nodes,
+			})
 		}
-		userpf, err := GetUserPF(BDstr + UserFunc)
-		if err != nil {
-			return nil, err
+		if strings.HasSuffix(pciID, MgmtFunc) { //mgmt pf
+			// get mgmt instance
+			fname = path.Join(SysfsDevices, pciID, InstanceFile)
+			content, err := GetFileContent(fname)
+			if err != nil {
+				return nil, err
+			}
+			if len(devices) > 0 {
+				device := &devices[len(devices)-1]
+				device.Nodes.Mgmt = MgmtPrefix + content
+			}
 		}
-		user := path.Join(UserPrefix, userpf)
 
-		file := SysfsDevices + BDstr + MgmtFunc + DSAPrefix + mgmtBDFdec + DSAverPostfix
-		dsaVer, err := GetFileContent(file)
-		if err != nil {
-			return nil, err
-		}
-		file = SysfsDevices + BDstr + MgmtFunc + DSAPrefix + mgmtBDFdec + DSAtsPostfix
-		dsaTs, err := GetFileContent(file)
-		if err != nil {
-			return nil, err
-		}
-		file = SysfsDevices + BDstr + UserFunc + DeviceIDPostfix
-		devid, err := GetFileContent(file)
-		if err != nil {
-			return nil, err
-		}
-
-		//TODO: check temp, power, fan speed etc, to give a healthy level
-		//so far, return Healthy
-		healthy := pluginapi.Healthy
-		devices = append(devices, Device{
-			index:     strconv.Itoa(len(devices) + 1),
-			shellVer:  dsaVer,
-			timestamp: dsaTs,
-			BDF:       BDstr + UserFunc,
-			deviceID:  devid,
-			Healthy:   healthy,
-			Nodes: Pairs{
-				Mgmt: mgmt,
-				User: user,
-			},
-		})
 	}
 	return devices, nil
 }

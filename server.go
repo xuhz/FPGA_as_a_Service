@@ -7,7 +7,6 @@ import (
 	"path"
 	"reflect"
 	_ "runtime/debug"
-	"strings"
 	"time"
 
 	log "github.com/Sirupsen/logrus"
@@ -57,17 +56,15 @@ func NewFPGADevicePlugin() *FPGADevicePlugin {
 			}
 			devMap := make(map[string]map[string]Device)
 			for _, device := range devices {
-				ver := strings.TrimSuffix(device.shellVer, "\n")
-				ts := strings.TrimSuffix(device.timestamp, "\n")
-				DSAtype := ver + "-" + ts
-				id := device.index
+				DSAtype := device.shellVer + "-" + device.timestamp
+				id := device.DBDF
 				if subMap, ok := devMap[DSAtype]; ok {
 					subMap = devMap[DSAtype]
 					subMap[id] = device
 				} else {
 					subMap = make(map[string]Device)
-					subMap[id] = device
 					devMap[DSAtype] = subMap
+					subMap[id] = device
 				}
 			}
 			//log.Debugf("newly reported FPGA device list: %v", devMap)
@@ -107,13 +104,13 @@ func (m *FPGADevicePlugin) checkDeviceUpdate(n map[string]map[string]Device) {
 		devicePluginServer := m.NewFPGADevicePluginServer(aDevType, aDevices)
 		m.devices[aDevType] = aDevices
 		m.servers[aDevType] = devicePluginServer
-		go func(aDevType string, name string) {
+		go func(aDevType string, aDevices map[string]Device, name string) {
 			if err := m.servers[aDevType].Serve(name); err != nil {
 				log.Println("Could not contact Kubelet, Exit. Did you enable the device plugin feature gate?")
 				os.Exit(1)
 			}
 			m.servers[aDevType].update <- aDevices
-		}(aDevType, resourceNamePrefix+"-"+aDevType)
+		}(aDevType, aDevices, resourceNamePrefix+"-"+aDevType)
 	}
 
 	//stop server for removed devices
@@ -133,16 +130,9 @@ func (m *FPGADevicePlugin) checkDeviceUpdate(n map[string]map[string]Device) {
 
 // NewFPGADevicePluginServer returns an initialized FPGADevicePluginServer
 func (m *FPGADevicePlugin) NewFPGADevicePluginServer(devType string, devices map[string]Device) *FPGADevicePluginServer {
-	devMap := make(map[string]Device)
-	log.Debugf("server type(%s) FPGA device list: %v", devType, devices)
-	for _, device := range devices {
-		id := device.index
-		devMap[id] = device
-	}
-
 	return &FPGADevicePluginServer{
 		devType: devType,
-		devices: devMap,
+		devices: devices,
 		socket:  path.Join(serverSockPath, devType+"-fpga.sock"),
 		stop:    make(chan interface{}),
 		update:  make(chan map[string]Device, 1),
@@ -270,7 +260,7 @@ func (m *FPGADevicePluginServer) Register(kubeletEndpoint, resourceName string) 
 func (m *FPGADevicePluginServer) sendDevices(s pluginapi.DevicePlugin_ListAndWatchServer) error {
 	resp := new(pluginapi.ListAndWatchResponse)
 	for _, device := range m.devices {
-		resp.Devices = append(resp.Devices, &pluginapi.Device{device.index, device.Healthy})
+		resp.Devices = append(resp.Devices, &pluginapi.Device{device.DBDF, device.Healthy})
 	}
 	log.Printf("Sending %d device(s) %v to kubelet", len(resp.Devices), resp.Devices)
 	if err := s.Send(resp); err != nil {

@@ -57,21 +57,25 @@ type Device struct {
 
 func GetInstance(DBDF string) (string, error) {
 	strArray := strings.Split(DBDF, ":")
-	b, err := strconv.Atoi(strArray[1])
+	domain, err := strconv.ParseUint(strArray[0], 16, 16)
+	if err != nil {
+		return "", fmt.Errorf("strconv failed: %s\n", strArray[0])
+	}
+	bus, err := strconv.ParseUint(strArray[1], 16, 8)
 	if err != nil {
 		return "", fmt.Errorf("strconv failed: %s\n", strArray[1])
 	}
 	strArray = strings.Split(strArray[2], ".")
-	d, err := strconv.Atoi(strArray[0])
+	dev, err := strconv.ParseUint(strArray[0], 16, 8)
 	if err != nil {
 		return "", fmt.Errorf("strconv failed: %s\n", strArray[0])
 	}
-	f, err := strconv.Atoi(strArray[1])
+	fc, err := strconv.ParseUint(strArray[1], 16, 8)
 	if err != nil {
 		return "", fmt.Errorf("strconv failed: %s\n", strArray[1])
 	}
-	ret := b*256 + d*8 + f
-	return strconv.Itoa(ret), nil
+	ret := domain*65536 + bus*256 + dev*8 + fc
+	return strconv.FormatUint(ret, 10), nil
 }
 
 func GetUserPF(dir string) (string, error) {
@@ -123,10 +127,8 @@ func GetDevices() ([]Device, error) {
 		// For containers deployed on top of VM, there may be only user PF
 		// available(mgmt PF is not assigned to the VM)
 		// so mgmt in Pari may be empty
-		nodes := Pairs{Mgmt: "", User: ""}
-		var dsaVer, dsaTs, userDBDF, devid string
 		if strings.HasSuffix(pciID, UserFunc) { //user pf
-			userDBDF = pciID
+			userDBDF := pciID
 			instance, err := GetInstance(userDBDF)
 			if err != nil {
 				return nil, err
@@ -137,27 +139,27 @@ func GetDevices() ([]Device, error) {
 			if err != nil {
 				return nil, err
 			}
-			dsaVer = content
+			dsaVer := content
 			// get dsa timestamp
 			fname = path.Join(SysfsDevices, pciID, DSAinfoFile+instance, DSAtsFile)
 			content, err = GetFileContent(fname)
 			if err != nil {
 				return nil, err
 			}
-			dsaTs = content
+			dsaTs := content
 			// get device id
 			fname = path.Join(SysfsDevices, pciID, DeviceFile)
 			content, err = GetFileContent(fname)
 			if err != nil {
 				return nil, err
 			}
-			devid = content
+			devid := content
 			// get user PF node
 			userpf, err := GetUserPF(path.Join(SysfsDevices, pciID, UserPFKeyword))
 			if err != nil {
 				return nil, err
 			}
-			nodes.User = path.Join(UserPrefix, userpf)
+			userNode := path.Join(UserPrefix, userpf)
 
 			//TODO: check temp, power, fan speed etc, to give a healthy level
 			//so far, return Healthy
@@ -169,7 +171,10 @@ func GetDevices() ([]Device, error) {
 				DBDF:      userDBDF,
 				deviceID:  devid,
 				Healthy:   healthy,
-				Nodes:     nodes,
+				Nodes: Pairs{
+					Mgmt: "",
+					User: userNode,
+				},
 			})
 		}
 		if strings.HasSuffix(pciID, MgmtFunc) { //mgmt pf
@@ -180,6 +185,10 @@ func GetDevices() ([]Device, error) {
 				return nil, err
 			}
 			if len(devices) > 0 {
+				// xilinx fpga has mgmt PF func id 1, and user PF func id 0
+				// so walking the devices dir will get user PF first.
+				// better way to do this is using map instead of depending on
+				// the assumption mentioned above
 				device := &devices[len(devices)-1]
 				device.Nodes.Mgmt = MgmtPrefix + content
 			}

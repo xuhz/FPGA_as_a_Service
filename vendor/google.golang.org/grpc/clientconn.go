@@ -301,6 +301,7 @@ func Dial(target string, opts ...DialOption) (*ClientConn, error) {
 // This is the EXPERIMENTAL API.
 func DialContext(ctx context.Context, target string, opts ...DialOption) (conn *ClientConn, err error) {
 	cc := &ClientConn{
+		Target: target,
 		target: target,
 		conns:  make(map[Address]*addrConn),
 	}
@@ -459,6 +460,7 @@ type ClientConn struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 
+	Target    string
 	target    string
 	authority string
 	dopts     dialOptions

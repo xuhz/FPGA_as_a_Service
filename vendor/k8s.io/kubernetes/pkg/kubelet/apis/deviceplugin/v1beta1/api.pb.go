@@ -506,7 +506,7 @@ func NewDevicePluginClient(cc *grpc.ClientConn) DevicePluginClient {
 
 func (c *devicePluginClient) GetDevicePluginOptions(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*DevicePluginOptions, error) {
 	out := new(DevicePluginOptions)
-	err := grpc.Invoke(ctx, "/v1beta1.DevicePlugin/GetDevicePluginOptions", in, out, c.cc, opts...)
+	err := grpc.Invoke(ctx, "v1beta1.DevicePlugin/"+c.cc.Target+"/GetDevicePluginOptions", in, out, c.cc, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -514,7 +514,7 @@ func (c *devicePluginClient) GetDevicePluginOptions(ctx context.Context, in *Emp
 }
 
 func (c *devicePluginClient) ListAndWatch(ctx context.Context, in *Empty, opts ...grpc.CallOption) (DevicePlugin_ListAndWatchClient, error) {
-	stream, err := grpc.NewClientStream(ctx, &_DevicePlugin_serviceDesc.Streams[0], c.cc, "/v1beta1.DevicePlugin/ListAndWatch", opts...)
+	stream, err := grpc.NewClientStream(ctx, &_DevicePlugin_serviceDesc.Streams[0], c.cc, "v1beta1.DevicePlugin/"+c.cc.Target+"/ListAndWatch", opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -547,7 +547,7 @@ func (x *devicePluginListAndWatchClient) Recv() (*ListAndWatchResponse, error) {
 
 func (c *devicePluginClient) Allocate(ctx context.Context, in *AllocateRequest, opts ...grpc.CallOption) (*AllocateResponse, error) {
 	out := new(AllocateResponse)
-	err := grpc.Invoke(ctx, "/v1beta1.DevicePlugin/Allocate", in, out, c.cc, opts...)
+	err := grpc.Invoke(ctx, "v1beta1.DevicePlugin/"+c.cc.Target+"/Allocate", in, out, c.cc, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -556,7 +556,7 @@ func (c *devicePluginClient) Allocate(ctx context.Context, in *AllocateRequest, 
 
 func (c *devicePluginClient) PreStartContainer(ctx context.Context, in *PreStartContainerRequest, opts ...grpc.CallOption) (*PreStartContainerResponse, error) {
 	out := new(PreStartContainerResponse)
-	err := grpc.Invoke(ctx, "/v1beta1.DevicePlugin/PreStartContainer", in, out, c.cc, opts...)
+	err := grpc.Invoke(ctx, "v1beta1.DevicePlugin/"+c.cc.Target+"/PreStartContainer", in, out, c.cc, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -581,10 +581,13 @@ type DevicePluginServer interface {
 	// before each container start. Device plugin can run device specific operations
 	// such as reseting the device before making devices available to the container
 	PreStartContainer(context.Context, *PreStartContainerRequest) (*PreStartContainerResponse, error)
+	GetSocketName() string
 }
 
 func RegisterDevicePluginServer(s *grpc.Server, srv DevicePluginServer) {
-	s.RegisterService(&_DevicePlugin_serviceDesc, srv)
+	sd := &_DevicePlugin_serviceDesc
+	sd.ServiceName = "v1beta1.DevicePlugin" + srv.GetSocketName()
+	s.RegisterService(sd, srv)
 }
 
 func _DevicePlugin_GetDevicePluginOptions_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {

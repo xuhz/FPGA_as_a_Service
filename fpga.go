@@ -197,16 +197,3 @@ func GetDevices() ([]Device, error) {
 	}
 	return devices, nil
 }
-
-/*
-func main() {
-	devices, err := GetDevices()
-	if err != nil {
-		fmt.Printf("%s !!!\n", err)
-		return
-	}
-	for _, device := range devices {
-		fmt.Printf("%v", device)
-	}
-}
-*/

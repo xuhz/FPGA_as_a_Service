@@ -182,6 +182,10 @@ func (m *FPGADevicePluginServer) deviceExists(id string) bool {
 	return false
 }
 
+func (m *FPGADevicePluginServer) GetSocketName() string {
+	return m.socket
+}
+
 func (m *FPGADevicePluginServer) PreStartContainer(ctx context.Context, rqt *pluginapi.PreStartContainerRequest) (*pluginapi.PreStartContainerResponse, error) {
 	return nil, fmt.Errorf("PreStartContainer() should not be called")
 }

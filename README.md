@@ -21,11 +21,11 @@ All cmds mentioned in this part run on the master node of k8s cluster
 ### Enable Xilinx FPGA support in k8s
 #### Deploy FPGA device plugin as daemonset
 ```
-$kubectl create  -f  fpga-device-plugin.yml
+$kubectl create -f fpga-device-plugin.yml
 ```
 #### Check nodes status and the FPGA resource status on the node
 ```
-$kubect get node
+$kubectl get node
 $kubectl describe node <node_name>
 ```
 ### Run jobs accessing FPGA
@@ -86,6 +86,11 @@ In this test case, the container image (xilinxatg/fgpa-verify:2018.10.29) has be
 The image contains verify.xclbin for many types of FPGA, please select the type matching the FPGA resource the pod requests. 
 
 ## Known issues
-* When there are multiple types of FPGA on one node, the device plugin registers resource for each specific type. The k8s device plugin framework seems to have issue. I have filed issue report tracking this. https://github.com/kubernetes/kubernetes/issues/70350
-* When there are multiple FPGAs of same type on one node, if a pod requests just partial FPGAs(not all), our XRT has issue – 'xbutil scan' still lists all FPGAs within container although not all are assigned to the container, while the 'xbutil list' can only access the assigned FPGA(s), so the index of the FPGAs gets messed and the app is confused to know which FPGA to use. This will be fixed by an update version of XRT
+* When there are multiple types of FPGA on one node, the device plugin registers resource for each
+  specific type. The k8s device plugin framework has issue handling this case. I have filed issue report tracking this. https://github.com/kubernetes/kubernetes/issues/70350
+* When there are multiple FPGAs of same type on one node, if a pod requests just partial FPGAs(not
+  all), XRT 2018.2 release has issue – 'xbutil scan' still lists all FPGAs within container although
+  not all are assigned to the container, while the 'xbutil list' can only access the assigned
+  FPGA(s), so the index of the FPGAs gets messed and the app is confused to know which FPGA to use.
+  This has been fixed in XRT 2018.3 release
 

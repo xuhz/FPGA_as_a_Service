@@ -1,4 +1,4 @@
-// Copyright 2018 Xilinx Corporation. All Rights Reserved.
+// Portions Copyright 2018 Xilinx Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,10 +21,6 @@ import (
 	log "github.com/Sirupsen/logrus"
 	"github.com/fsnotify/fsnotify"
 	pluginapi "k8s.io/kubernetes/pkg/kubelet/apis/deviceplugin/v1beta1"
-)
-
-var (
-	MasterNetDevice string = ""
 )
 
 func main() {

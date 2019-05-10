@@ -74,7 +74,7 @@ test5         Ready    <none>   15d   v1.15.0-alpha.1.109+888d26d1191880-dirty
 
 Check FPGA resource in the worker node
 ```
-$kubectl describe node <node_name>
+$kubectl describe node fpga-1525-0
 
 ...snippet...
 
@@ -117,7 +117,6 @@ The exact name of the FPGA resource on each node can be extracted from the outpu
 ```
 $kubectl describe node <node_name>
 ```
-A user pod requesting FPGA resource can be deployed now.
 
 #### Deploy user pod
 
@@ -141,17 +140,25 @@ spec:
   command: ["/bin/sh"]
   args: ["-c", "while true; do echo hello; sleep 5;done;"] 
 ```
+
+Deploy the pod now
+
 ```
 $kubectl create -f mypod.yaml
 ```
 #### Check status of the deployed pod
 ```
-$kubectl get pod my-pod
+$kubectl get pod
+
+...snippet...
 
 my-pod                           1/1     Running   0          7s
+
+...snippet...
+
 ```
 ```
-$kubectl describe pod <pod_name>
+$kubectl describe pod my-pod
 
 ...snippet...
 
@@ -165,11 +172,11 @@ Limits:
 ```
 #### Run hello world in the pod
 ```
-$kubectl exec -it mypod /bin/bash
-mypod>source /opt/xilxinx/xrt/setup.sh
-mypod>xbutil scan
-mypod>cd /tmp/alveo-u200/xilinx_u200_xdma_201830_1/test/
-mypod>./verify.exe ./verify.xclbin
+$kubectl exec -it my-pod /bin/bash
+my-pod>source /opt/xilxinx/xrt/setup.sh
+my-pod>xbutil scan
+my-pod>cd /tmp/alveo-u200/xilinx_u200_xdma_201830_1/test/
+my-pod>./verify.exe ./verify.xclbin
 ```
 In this test case, the container image (xilinxatg/fgpa-verify:latest) has been pushed to docker hub. It can be publicly accessed
 
@@ -177,7 +184,8 @@ The image contains verify.xclbin for many types of FPGA, please select the type 
 
 ## Known issues
 * When there are multiple types of FPGA on one node, the device plugin registers resource for each
-  specific type. The k8s device plugin framework has issue handling this case. Issue report filed tracking this. https://github.com/kubernetes/kubernetes/issues/70350
+  specific typei, but the k8s device plugin framework has issue handling this case. 
+  Issue report filed tracking this. https://github.com/kubernetes/kubernetes/issues/70350
 
 ## Contact
 Brian Xu(brianx@xilinx.com)
